@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 
-const API_URL = "http://localhost:8080";
+const API_URL = "https://privatedocs-ai.onrender.com";
 
 function App() {
   const [activePage, setActivePage] = useState("dashboard");

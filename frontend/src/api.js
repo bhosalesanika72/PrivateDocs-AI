@@ -1,8 +1,6 @@
-const API_URL = "http://localhost:8080/api";
+const API_URL = "https://privatedocs-ai.onrender.com/api";
 
-// ===============================
 // GET ALL DOCUMENTS
-// ===============================
 export async function getDocuments() {
   const response = await fetch(`${API_URL}/documents`);
 
@@ -13,12 +11,9 @@ export async function getDocuments() {
   return await response.json();
 }
 
-// ===============================
 // UPLOAD PDF
-// ===============================
 export async function uploadDocument(file) {
   const formData = new FormData();
-
   formData.append("file", file);
 
   const response = await fetch(`${API_URL}/documents/upload`, {
@@ -34,9 +29,7 @@ export async function uploadDocument(file) {
   return await response.json();
 }
 
-// ===============================
 // DELETE DOCUMENT
-// ===============================
 export async function deleteDocument(id) {
   const response = await fetch(`${API_URL}/documents/${id}`, {
     method: "DELETE",
@@ -49,9 +42,7 @@ export async function deleteDocument(id) {
   return true;
 }
 
-// ===============================
 // ASK AI
-// ===============================
 export async function askAI(question) {
   const response = await fetch(`${API_URL}/ask`, {
     method: "POST",
