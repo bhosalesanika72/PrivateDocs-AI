@@ -24,3 +24,6 @@ Thumbs.db
 
 # Uploaded files
 backend/**/uploads/lh09h
+backend/**/data/*.db
+.vercel
+.env*

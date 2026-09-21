@@ -246,7 +246,8 @@ public class AskController {
     // FIND RELEVANT CHUNKS
     // =========================================================
 
-    private List<DocumentChunk> findRelevantChunks(
+        @SuppressWarnings("null")
+        private List<DocumentChunk> findRelevantChunks(
             String question,
             List<DocumentChunk> chunks
     ) {
@@ -319,13 +320,13 @@ public class AskController {
         return scored.stream()
                 .sorted(
                         Comparator
-                                .comparingInt(
-                                        ScoredChunk::score
+                                .<ScoredChunk>comparingInt(
+                                        scoredChunk -> scoredChunk.score()
                                 )
                                 .reversed()
                 )
                 .limit(5)
-                .map(ScoredChunk::chunk)
+                .map(scoredChunk -> scoredChunk.chunk())
                 .collect(Collectors.toList());
     }
 
@@ -350,7 +351,8 @@ public class AskController {
     // TOKENIZE
     // =========================================================
 
-    private Set<String> tokenize(String text) {
+        @SuppressWarnings("null")
+        private Set<String> tokenize(String text) {
 
         if (text == null || text.isBlank()) {
             return Collections.emptySet();
@@ -393,7 +395,7 @@ public class AskController {
         return Arrays.stream(
                         text.split("\\s+")
                 )
-                .map(String::trim)
+                .map(word -> word.trim())
                 .filter(word ->
                         word.length() > 2
                 )

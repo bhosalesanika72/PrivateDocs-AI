@@ -15,7 +15,7 @@ import java.util.function.Function;
 @Service
 public class JwtService {
 
-    @Value("${JWT_SECRET}")
+    @Value("${JWT_SECRET:}")
     private String secret;
 
     // Get secret key
@@ -51,6 +51,7 @@ public class JwtService {
     // =========================
     // EXTRACT EMAIL
     // =========================
+    @SuppressWarnings("null")
     public String extractEmail(String token) {
 
         return extractClaim(
@@ -78,6 +79,7 @@ public class JwtService {
     // =========================
     // VALIDATE TOKEN
     // =========================
+    @SuppressWarnings("null")
     public boolean isTokenValid(String token) {
 
         try {
