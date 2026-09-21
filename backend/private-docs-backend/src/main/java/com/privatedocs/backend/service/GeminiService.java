@@ -11,11 +11,10 @@ public class GeminiService {
     private final Client client;
 
     public GeminiService(@Value("${gemini.api.key}") String apiKey) {
-        System.out.println("Creating Gemini Client...");
 
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
-                    "Gemini API key is missing. Add gemini.api.key to application.properties."
+                    "Gemini API key is missing. Check gemini.api.key in application.properties"
             );
         }
 
@@ -28,9 +27,19 @@ public class GeminiService {
 
     public String generateAnswer(String question, String context) {
 
+        if (question == null || question.isBlank()) {
+            return "Please enter a question.";
+        }
+
+        if (context == null || context.isBlank()) {
+            return "I could not find any document content to answer from.";
+        }
+
         String prompt = """
-                You are PrivateDocs AI, an assistant that answers questions
-                only from the provided document.
+                You are PrivateDocs AI.
+
+                Answer the user's question ONLY using the document content
+                provided below.
 
                 DOCUMENT CONTENT:
                 %s
@@ -38,28 +47,26 @@ public class GeminiService {
                 USER QUESTION:
                 %s
 
-                INSTRUCTIONS:
-                - Answer using only the document content.
+                RULES:
+                - Use only the document content.
+                - Do not invent information.
                 - If the answer is not present in the document, say:
                   "I could not find this information in the document."
-                - Do not invent information.
-                - Give a clear and concise answer.
+                - Keep the answer clear and concise.
 
                 ANSWER:
                 """.formatted(context, question);
 
-        System.out.println("Sending request to Gemini...");
-
         try {
+
+            System.out.println("Sending request to Gemini...");
 
             GenerateContentResponse response =
                     client.models.generateContent(
-                            "gemini-3.7-flash",
+                            "gemini-2.5-flash",
                             prompt,
                             null
                     );
-
-            System.out.println("Gemini response received.");
 
             String answer = response.text();
 
@@ -71,10 +78,9 @@ public class GeminiService {
 
         } catch (Exception e) {
 
-            System.err.println("Gemini API error:");
-            e.printStackTrace();
+            System.err.println("Gemini API error: " + e.getMessage());
 
-            return "Unable to generate an AI answer: " + e.getMessage();
+            return "Unable to generate an AI answer right now. Please try again.";
         }
     }
 }

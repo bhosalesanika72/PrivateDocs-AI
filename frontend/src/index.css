@@ -1,15 +1,1 @@
-html,
-body,
-#root {
-  width: 100%;
-  min-height: 100%;
-  margin: 0;
-}
-
-html {
-  background: #050b1d;
-}
-
-body {
-  min-height: 100vh;
-}
+html,body,#root{margin:0;padding:0;width:100%;min-height:100%}

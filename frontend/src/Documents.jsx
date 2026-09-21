@@ -1,161 +1,81 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  getAllDocuments,
-  deleteDocument
-} from "./documentStore";
+import { deleteDocument, getDocuments } from "./api";
 
-function Documents() {
+export default function Documents() {
   const [documents, setDocuments] = useState([]);
-
-  const loadDocuments = () => {
-    setDocuments(getAllDocuments());
-  };
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
+    let active = true;
+
+    const loadDocuments = async () => {
+      setLoading(true);
+      try {
+        const data = await getDocuments();
+        if (active) {
+          setDocuments(Array.isArray(data) ? data : []);
+          setMessage("");
+        }
+      } catch (error) {
+        if (active) setMessage(error.message || "Unable to load documents.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
     loadDocuments();
+    return () => { active = false; };
   }, []);
 
-  const handleDelete = (id) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this document?"
-    );
-
-    if (!confirmed) {
-      return;
+  const remove = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this document?")) return;
+    try {
+      await deleteDocument(id);
+      setDocuments((items) => items.filter((doc) => doc.id !== id));
+      setMessage("Document deleted successfully.");
+    } catch (error) {
+      setMessage(error.message || "Unable to delete document.");
     }
-
-    deleteDocument(id);
-
-    loadDocuments();
-  };
-
-  const formatSize = (bytes) => {
-    if (!bytes) return "0 KB";
-
-    const kb = bytes / 1024;
-
-    if (kb < 1024) {
-      return `${kb.toFixed(1)} KB`;
-    }
-
-    return `${(kb / 1024).toFixed(1)} MB`;
-  };
-
-  const formatDate = (date) => {
-    return new Date(date).toLocaleDateString();
   };
 
   return (
-    <div className="documents-page">
-
-      <div className="page-header">
-
+    <section className="content-page">
+      <div className="page-header documents-header">
         <div>
-          <p className="small-label">
-            YOUR PRIVATE LIBRARY
-          </p>
-
-          <h1>Documents</h1>
-
-          <p className="page-description">
-            Manage the PDF documents stored in your workspace.
-          </p>
+          <p className="small-label">PRIVATE DOCUMENT WORKSPACE</p>
+          <h1>Your Documents</h1>
+          <p className="page-description">Manage your uploaded documents in one secure place.</p>
         </div>
-
-        <Link
-          to="/upload"
-          className="primary-button"
-        >
-          + Upload PDF
-        </Link>
-
+        <Link to="/upload" className="primary-button small-button">+ Upload Document</Link>
       </div>
 
-      {documents.length === 0 ? (
+      {message && <div className="message">{message}</div>}
 
+      {loading ? (
+        <div className="empty-state"><h2>Loading documents...</h2></div>
+      ) : documents.length === 0 ? (
         <div className="empty-state">
-
-          <div className="empty-icon">
-            📄
-          </div>
-
+          <div className="empty-icon">📄</div>
           <h2>No documents yet</h2>
-
-          <p>
-            Upload your first PDF to start using PrivateDocs.
-          </p>
-
-          <Link
-            to="/upload"
-            className="primary-button"
-          >
-            Upload Your First PDF
-          </Link>
-
+          <p>Upload your first PDF to start using PrivateDocs AI.</p>
+          <Link to="/upload" className="primary-button small-button">Upload PDF</Link>
         </div>
-
       ) : (
-
         <div className="documents-grid">
-
-          {documents.map((document) => (
-
-            <div
-              className="document-card"
-              key={document.id}
-            >
-
-              <div className="document-icon">
-                📄
+          {documents.map((doc) => (
+            <article className="document-card" key={doc.id}>
+              <div className="document-icon">📄</div>
+              <div className="document-content">
+                <h2>{doc.fileName || doc.filename || doc.name || "Untitled Document"}</h2>
+                <p>{doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : "Uploaded document"}</p>
               </div>
-
-              <div className="document-info">
-
-                <h3 title={document.name}>
-                  {document.name}
-                </h3>
-
-                <p>
-                  {formatSize(document.size)}
-                  {" • "}
-                  {formatDate(document.uploadedAt)}
-                </p>
-
-              </div>
-
-              <div className="document-actions">
-
-                <a
-                  href={document.data}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="view-button"
-                >
-                  Open PDF
-                </a>
-
-                <button
-                  className="delete-button"
-                  onClick={() =>
-                    handleDelete(document.id)
-                  }
-                >
-                  Delete
-                </button>
-
-              </div>
-
-            </div>
-
+              <button className="delete-button" onClick={() => remove(doc.id)}>Delete</button>
+            </article>
           ))}
-
         </div>
-
       )}
-
-    </div>
+    </section>
   );
 }
-
-export default Documents;

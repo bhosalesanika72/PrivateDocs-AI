@@ -7,13 +7,8 @@ import com.privatedocs.backend.service.GeminiService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api")
@@ -25,69 +20,82 @@ public class AskController {
 
     public AskController(
             DocumentChunkRepository documentChunkRepository,
-            GeminiService geminiService) {
-
+            GeminiService geminiService
+    ) {
         this.documentChunkRepository = documentChunkRepository;
         this.geminiService = geminiService;
     }
 
-    // =========================================================
-    // ASK QUESTION
-    // =========================================================
-
     @PostMapping("/ask")
     public ResponseEntity<Map<String, Object>> ask(
-            @RequestBody Map<String, String> request) {
+            @RequestBody Map<String, String> request
+    ) {
+
+        long start = System.currentTimeMillis();
 
         String question = request.get("question");
 
-        // -----------------------------------------------------
-        // 1. Validate question
-        // -----------------------------------------------------
+        // -----------------------------------------
+        // VALIDATE QUESTION
+        // -----------------------------------------
 
         if (question == null || question.trim().isEmpty()) {
 
-            Map<String, Object> response =
-                    new LinkedHashMap<>();
-
-            response.put("question", "");
-            response.put(
-                    "answer",
-                    "Please enter a question."
-            );
-            response.put("matchedChunks", 0);
-
             return ResponseEntity.badRequest()
-                    .body(response);
+                    .body(createResponse(
+                            "",
+                            "Please enter a question.",
+                            0
+                    ));
         }
 
         question = question.trim();
 
-        // -----------------------------------------------------
-        // 2. Get all document chunks
-        // -----------------------------------------------------
+        System.out.println();
+        System.out.println("=================================");
+        System.out.println("AI QUESTION RECEIVED");
+        System.out.println(question);
+        System.out.println("=================================");
+
+        // -----------------------------------------
+        // LOAD CHUNKS
+        // -----------------------------------------
+
+        long dbStart = System.currentTimeMillis();
 
         List<DocumentChunk> allChunks =
                 documentChunkRepository.findAll();
 
+        long dbEnd = System.currentTimeMillis();
+
+        System.out.println(
+                "Loaded "
+                        + allChunks.size()
+                        + " chunks in "
+                        + (dbEnd - dbStart)
+                        + " ms"
+        );
+
+        // -----------------------------------------
+        // NO DOCUMENTS
+        // -----------------------------------------
+
         if (allChunks.isEmpty()) {
 
-            Map<String, Object> response =
-                    new LinkedHashMap<>();
-
-            response.put("question", question);
-            response.put(
-                    "answer",
-                    "No documents have been uploaded yet."
+            return ResponseEntity.ok(
+                    createResponse(
+                            question,
+                            "No documents have been uploaded yet.",
+                            0
+                    )
             );
-            response.put("matchedChunks", 0);
-
-            return ResponseEntity.ok(response);
         }
 
-        // -----------------------------------------------------
-        // 3. Find relevant chunks
-        // -----------------------------------------------------
+        // -----------------------------------------
+        // FIND RELEVANT CHUNKS
+        // -----------------------------------------
+
+        long searchStart = System.currentTimeMillis();
 
         List<DocumentChunk> relevantChunks =
                 findRelevantChunks(
@@ -95,102 +103,144 @@ public class AskController {
                         allChunks
                 );
 
+        long searchEnd = System.currentTimeMillis();
+
+        System.out.println(
+                "Relevant chunks: "
+                        + relevantChunks.size()
+                        + " found in "
+                        + (searchEnd - searchStart)
+                        + " ms"
+        );
+
+        // -----------------------------------------
+        // NO MATCH
+        // -----------------------------------------
+
         if (relevantChunks.isEmpty()) {
 
-            Map<String, Object> response =
-                    new LinkedHashMap<>();
-
-            response.put("question", question);
-            response.put(
-                    "answer",
-                    "I could not find relevant information in the uploaded documents."
+            return ResponseEntity.ok(
+                    createResponse(
+                            question,
+                            "I could not find relevant information in the uploaded documents.",
+                            0
+                    )
             );
-            response.put("matchedChunks", 0);
-
-            return ResponseEntity.ok(response);
         }
 
-        // -----------------------------------------------------
-        // 4. Build context for Gemini
-        // -----------------------------------------------------
+        // -----------------------------------------
+        // BUILD CONTEXT
+        // -----------------------------------------
 
         StringBuilder contextBuilder =
                 new StringBuilder();
 
-        for (DocumentChunk chunk : relevantChunks) {
+        /*
+         * Never send too many chunks to Gemini.
+         */
+        int maxChunks = Math.min(
+                relevantChunks.size(),
+                5
+        );
 
-            if (chunk.getChunkText() == null ||
-                    chunk.getChunkText().isBlank()) {
+        for (int i = 0; i < maxChunks; i++) {
+
+            DocumentChunk chunk =
+                    relevantChunks.get(i);
+
+            if (chunk == null) {
+                continue;
+            }
+
+            String text = chunk.getChunkText();
+
+            if (text == null || text.isBlank()) {
                 continue;
             }
 
             contextBuilder
-                    .append(chunk.getChunkText())
+                    .append(text.trim())
                     .append("\n\n");
         }
 
         String context =
-                contextBuilder.toString().trim();
+                contextBuilder
+                        .toString()
+                        .trim();
 
-        // -----------------------------------------------------
-        // 5. Send question + context to Gemini
-        // -----------------------------------------------------
+        /*
+         * Additional safety limit.
+         */
+        if (context.length() > 12000) {
+            context =
+                    context.substring(0, 12000);
+        }
+
+        System.out.println(
+                "Context length: "
+                        + context.length()
+                        + " characters"
+        );
+
+        // -----------------------------------------
+        // GEMINI
+        // -----------------------------------------
 
         String answer;
 
         try {
 
-            answer = geminiService.generateAnswer(
-                    question,
-                    context
+            long aiStart =
+                    System.currentTimeMillis();
+
+            answer =
+                    geminiService.generateAnswer(
+                            question,
+                            context
+                    );
+
+            long aiEnd =
+                    System.currentTimeMillis();
+
+            System.out.println(
+                    "AI generation took "
+                            + (aiEnd - aiStart)
+                            + " ms"
             );
-
-            if (answer == null ||
-                    answer.trim().isEmpty()) {
-
-                answer =
-                        "I could not generate an answer from the uploaded document.";
-            }
 
         } catch (Exception e) {
 
             e.printStackTrace();
 
-            Map<String, Object> response =
-                    new LinkedHashMap<>();
-
-            response.put("question", question);
-            response.put(
-                    "answer",
-                    "Unable to generate the AI answer. Please check the Gemini configuration."
-            );
-            response.put(
-                    "matchedChunks",
-                    relevantChunks.size()
-            );
-
-            return ResponseEntity
-                    .internalServerError()
-                    .body(response);
+            answer =
+                    "Unable to generate an AI answer right now.";
         }
 
-        // -----------------------------------------------------
-        // 6. Return Gemini's answer
-        // -----------------------------------------------------
+        // -----------------------------------------
+        // FINAL RESPONSE
+        // -----------------------------------------
 
-        Map<String, Object> response =
-                new LinkedHashMap<>();
+        long end =
+                System.currentTimeMillis();
 
-        response.put("question", question);
-        response.put("answer", answer.trim());
-        response.put(
-                "matchedChunks",
-                relevantChunks.size()
+        System.out.println(
+                "Total /api/ask time: "
+                        + (end - start)
+                        + " ms"
         );
 
-        return ResponseEntity.ok(response);
-    }
+        System.out.println(
+                "================================="
+        );
 
+        return ResponseEntity.ok(
+                createResponse(
+                        question,
+                        answer,
+                        relevantChunks.size()
+                )
+        );
+    }
 
     // =========================================================
     // FIND RELEVANT CHUNKS
@@ -198,97 +248,67 @@ public class AskController {
 
     private List<DocumentChunk> findRelevantChunks(
             String question,
-            List<DocumentChunk> chunks) {
+            List<DocumentChunk> chunks
+    ) {
 
-        String cleanedQuestion =
-                question
-                        .toLowerCase()
-                        .replaceAll(
-                                "[^a-zA-Z0-9 ]",
-                                ""
-                        );
+        String normalizedQuestion =
+                normalize(question);
 
-        String[] questionWords =
-                cleanedQuestion.split("\\s+");
+        Set<String> questionWords =
+                tokenize(normalizedQuestion);
 
-        // Words that should not affect matching
-        Set<String> stopWords = Set.of(
-                "what",
-                "is",
-                "are",
-                "the",
-                "a",
-                "an",
-                "does",
-                "do",
-                "did",
-                "how",
-                "why",
-                "when",
-                "where",
-                "who",
-                "which",
-                "can",
-                "could",
-                "would",
-                "should",
-                "tell",
-                "me",
-                "about",
-                "this",
-                "that",
-                "these",
-                "those",
-                "based",
-                "only",
-                "on",
-                "from",
-                "uploaded",
-                "document",
-                "documents"
-        );
+        if (questionWords.isEmpty()) {
+            return Collections.emptyList();
+        }
 
-        List<ChunkScore> scoredChunks =
+        List<ScoredChunk> scored =
                 new ArrayList<>();
 
-        // -----------------------------------------------------
-        // Score every chunk
-        // -----------------------------------------------------
-
         for (DocumentChunk chunk : chunks) {
+
+            if (chunk == null) {
+                continue;
+            }
 
             String text =
                     chunk.getChunkText();
 
-            if (text == null ||
-                    text.isBlank()) {
+            if (text == null || text.isBlank()) {
                 continue;
             }
 
-            String lowerText =
-                    text.toLowerCase();
+            String normalizedText =
+                    normalize(text);
+
+            Set<String> textWords =
+                    tokenize(normalizedText);
+
+            if (textWords.isEmpty()) {
+                continue;
+            }
 
             int score = 0;
 
             for (String word : questionWords) {
 
-                if (word.length() < 2) {
-                    continue;
-                }
-
-                if (stopWords.contains(word)) {
-                    continue;
-                }
-
-                if (lowerText.contains(word)) {
+                if (textWords.contains(word)) {
                     score++;
                 }
             }
 
+            /*
+             * Phrase match gives extra weight.
+             */
+            if (normalizedText.contains(
+                    normalizedQuestion
+            )) {
+                score += 5;
+            }
+
             if (score > 0) {
 
-                scoredChunks.add(
-                        new ChunkScore(
+                scored.add(
+                        new ScoredChunk(
                                 chunk,
                                 score
                         )
@@ -296,57 +316,146 @@ public class AskController {
             }
         }
 
-        // -----------------------------------------------------
-        // Sort highest scoring chunks first
-        // -----------------------------------------------------
-
-        scoredChunks.sort(
-                Comparator
-                        .comparingInt(
-                                ChunkScore::getScore
-                        )
-                        .reversed()
-                        .thenComparingInt(
-                                cs -> cs.getChunk()
-                                        .getChunkIndex()
-                        )
-        );
-
-        // -----------------------------------------------------
-        // Return maximum 3 chunks
-        // -----------------------------------------------------
-
-        return scoredChunks
-                .stream()
-                .limit(3)
-                .map(ChunkScore::getChunk)
-                .filter(Objects::nonNull)
-                .toList();
+        return scored.stream()
+                .sorted(
+                        Comparator
+                                .comparingInt(
+                                        ScoredChunk::score
+                                )
+                                .reversed()
+                )
+                .limit(5)
+                .map(ScoredChunk::chunk)
+                .collect(Collectors.toList());
     }
 
+    // =========================================================
+    // NORMALIZE TEXT
+    // =========================================================
+
+    private String normalize(String text) {
+
+        if (text == null) {
+            return "";
+        }
+
+        return text
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9\\s]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
 
     // =========================================================
-    // CHUNK SCORE CLASS
+    // TOKENIZE
     // =========================================================
 
-    private static class ChunkScore {
+    private Set<String> tokenize(String text) {
+
+        if (text == null || text.isBlank()) {
+            return Collections.emptySet();
+        }
+
+        Set<String> stopWords =
+                Set.of(
+                        "the",
+                        "is",
+                        "are",
+                        "was",
+                        "were",
+                        "a",
+                        "an",
+                        "and",
+                        "or",
+                        "of",
+                        "to",
+                        "in",
+                        "on",
+                        "for",
+                        "with",
+                        "what",
+                        "which",
+                        "who",
+                        "how",
+                        "why",
+                        "when",
+                        "where",
+                        "do",
+                        "does",
+                        "did",
+                        "i",
+                        "me",
+                        "my",
+                        "you",
+                        "your"
+                );
+
+        return Arrays.stream(
+                        text.split("\\s+")
+                )
+                .map(String::trim)
+                .filter(word ->
+                        word.length() > 2
+                )
+                .filter(word ->
+                        !stopWords.contains(word)
+                )
+                .collect(Collectors.toSet());
+    }
+
+    // =========================================================
+    // RESPONSE
+    // =========================================================
+
+    private Map<String, Object> createResponse(
+            String question,
+            String answer,
+            int matchedChunks
+    ) {
+
+        Map<String, Object> response =
+                new LinkedHashMap<>();
+
+        response.put(
+                "question",
+                question
+        );
+
+        response.put(
+                "answer",
+                answer
+        );
+
+        response.put(
+                "matchedChunks",
+                matchedChunks
+        );
+
+        return response;
+    }
+
+    // =========================================================
+    // INTERNAL SCORE CLASS
+    // =========================================================
+
+    private static class ScoredChunk {
 
         private final DocumentChunk chunk;
         private final int score;
 
-        public ChunkScore(
+        public ScoredChunk(
                 DocumentChunk chunk,
-                int score) {
-
+                int score
+        ) {
             this.chunk = chunk;
             this.score = score;
         }
 
-        public DocumentChunk getChunk() {
+        public DocumentChunk chunk() {
             return chunk;
         }
 
-        public int getScore() {
+        public int score() {
             return score;
         }
     }

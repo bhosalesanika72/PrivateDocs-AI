@@ -1,4 +1,4 @@
-package com.privatedocsai.service;
+package com.privatedocs.backend.service;
 
 public interface AskService {
 
